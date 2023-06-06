@@ -231,13 +231,16 @@ impl WorkflowExecutor for ConductorClient {
 
 #[cfg(test)]
 mod unit_tests {
+    #[cfg(all(test, feature = "integration_test"))]
     use crate::{
         network::client::{ ConductorClient, TaskMetadataProvider, WorkflowMetadataProvider },
-        common::{ task::task_metadata::RetryLogicEnum, timeout_policy::TimeoutPolicyEnum },
+        common::enums::{ RetryLogicEnum, TimeoutPolicyEnum },
     };
+    #[cfg(all(test, feature = "integration_test"))]
     use tokio::runtime::Runtime;
 
     #[test]
+    #[cfg(all(test, feature = "integration_test"))]
     fn test_get_task_metadata() {
         let rt = Runtime::new().unwrap();
         let client = build_test_conductor_client();
@@ -250,6 +253,7 @@ mod unit_tests {
     }
 
     #[test]
+    #[cfg(all(test, feature = "integration_test"))]
     fn test_get_all_task_metadata() {
         let rt = Runtime::new().unwrap();
         let client = build_test_conductor_client();
@@ -258,6 +262,7 @@ mod unit_tests {
     }
 
     #[test]
+    #[cfg(all(test, feature = "integration_test"))]
     fn test_get_workflow_metadata() {
         let rt = Runtime::new().unwrap();
         let client = build_test_conductor_client();
@@ -269,6 +274,7 @@ mod unit_tests {
     }
 
     #[test]
+    #[cfg(all(test, feature = "integration_test"))]
     fn test_get_all_workflow_metadata() {
         let rt = Runtime::new().unwrap();
         let client = build_test_conductor_client();
@@ -276,6 +282,7 @@ mod unit_tests {
         assert!(workflow_metadata.len() > 0);
     }
 
+    #[cfg(all(test, feature = "integration_test"))]
     fn build_test_conductor_client() -> ConductorClient {
         let host = Box::new("localhost");
         let port = Box::new(8080_u32);

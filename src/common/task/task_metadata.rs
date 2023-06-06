@@ -3,17 +3,7 @@ use std::collections::HashMap;
 use serde::{ Deserialize, Serialize };
 use serde_json::Value;
 
-use crate::common::timeout_policy::TimeoutPolicyEnum;
-
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub enum RetryLogicEnum {
-    #[serde(rename = "FIXED")]
-    Fixed,
-    #[serde(rename = "EXPONENTIAL_BACK_OFF")]
-    ExponentialBackOff,
-    #[serde(rename = "LINEAR_BACK_OFF")]
-    LinearBackOff,
-}
+use crate::common::enums::{ RetryLogicEnum, TimeoutPolicyEnum };
 
 #[derive(Serialize, Deserialize)]
 pub struct TaskDef {

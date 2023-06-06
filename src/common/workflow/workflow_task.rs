@@ -3,55 +3,7 @@ use std::collections::HashMap;
 use serde::{ Deserialize, Serialize };
 use serde_json::Value;
 
-use crate::common::task::task_metadata::TaskDef;
-
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub enum WorkflowTaskTypeEnum {
-    #[serde(rename = "SIMPLE")]
-    Simple,
-    #[serde(rename = "DYNAMIC")]
-    Dynamic,
-    #[serde(rename = "FORK_JOIN")]
-    ForkJoin,
-    #[serde(rename = "FORK_JOIN_DYNAMIC")]
-    ForkJoinDynamic,
-    #[serde(rename = "DECISION")]
-    Decision,
-    #[serde(rename = "SWITCH")]
-    Switch,
-    #[serde(rename = "JOIN")]
-    Join,
-    #[serde(rename = "DO_WHILE")]
-    DoWhile,
-    #[serde(rename = "SUB_WORKFLOW")]
-    SubWorkflow,
-    #[serde(rename = "START_WORKFLOW")]
-    StartWorkflow,
-    #[serde(rename = "EVENT")]
-    Event,
-    #[serde(rename = "WAIT")]
-    Wait,
-    #[serde(rename = "HUMAN")]
-    Human,
-    #[serde(rename = "USER_DEFINED")]
-    UserDefined,
-    #[serde(rename = "HTTP")]
-    Http,
-    #[serde(rename = "LAMBDA")]
-    Lambda,
-    #[serde(rename = "INLINE")]
-    Inline,
-    #[serde(rename = "EXCLUSIVE_JOIN")]
-    ExclusiveJoin,
-    #[serde(rename = "TERMINATE")]
-    Terminate,
-    #[serde(rename = "KAFKA_PUBLISH")]
-    KafkaPublish,
-    #[serde(rename = "JSON_JQ_TRANSFORM")]
-    JsonJqTransform,
-    #[serde(rename = "SET_VARIABLE")]
-    SetVariable,
-}
+use crate::common::{ task::task_metadata::TaskDef, enums::WorkflowTaskTypeEnum };
 
 #[derive(Serialize, Deserialize)]
 pub struct WorkflowTask {

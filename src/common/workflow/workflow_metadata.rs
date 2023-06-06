@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{ Deserialize, Serialize };
 use serde_json::Value;
 
-use crate::common::{ status::StatusEnum, task::task::Task };
+use crate::common::{ enums::StatusEnum, task::task::Task };
 
 use super::workflow::WorkflowDef;
 

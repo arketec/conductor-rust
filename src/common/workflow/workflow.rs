@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{ Deserialize, Serialize };
 use serde_json::Value;
 
-use crate::common::timeout_policy::TimeoutPolicyEnum;
+use crate::common::enums::TimeoutPolicyEnum;
 
 use super::workflow_task::WorkflowTask;
 

@@ -1,12 +1,6 @@
 use serde::{ Deserialize, Serialize };
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub enum EvaluatorType {
-    #[serde(rename = "case-value")]
-    CaseValue,
-    #[serde(rename = "javascript")]
-    Javascript,
-}
+use crate::common::enums::EvaluatorType;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum ActionType {
