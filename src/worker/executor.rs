@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use tokio::runtime::Runtime;
 
 use crate::{ network::client::TaskPoller, common::enums::StatusEnum };
-use reqwest::{ Error };
+use reqwest::Error;
 
 use super::worker::ConductorWorker;
 
