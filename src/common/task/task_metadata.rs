@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::common::enums::{ RetryLogicEnum, TimeoutPolicyEnum };
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
 pub struct TaskDef {
     #[serde(rename = "retryLogic")]
     pub retry_logic: Option<RetryLogicEnum>,

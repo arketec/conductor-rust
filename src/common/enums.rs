@@ -1,6 +1,6 @@
 use serde::{ Deserialize, Serialize };
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub enum StatusEnum {
     #[serde(rename = "IN_PROGRESS")]
     InProgress,
@@ -21,7 +21,7 @@ pub enum StatusEnum {
     #[serde(rename = "SKIPPED")]
     Skipped,
 }
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub enum TimeoutPolicyEnum {
     #[serde(rename = "RETRY")]
     Retry,
@@ -30,7 +30,7 @@ pub enum TimeoutPolicyEnum {
     #[serde(rename = "ALERT_ONLY")]
     AlertOnly,
 }
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub enum RetryLogicEnum {
     #[serde(rename = "FIXED")]
     Fixed,
@@ -39,14 +39,15 @@ pub enum RetryLogicEnum {
     #[serde(rename = "LINEAR_BACK_OFF")]
     LinearBackOff,
 }
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone, Default)]
 pub enum EvaluatorType {
+    #[default]
     #[serde(rename = "case-value")]
     CaseValue,
     #[serde(rename = "javascript")]
     Javascript,
 }
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub enum WorkflowTaskTypeEnum {
     #[serde(rename = "SIMPLE")]
     Simple,

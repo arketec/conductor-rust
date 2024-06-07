@@ -2,7 +2,7 @@ use serde::{ Deserialize, Serialize };
 
 use crate::common::enums::EvaluatorType;
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub enum ActionType {
     #[serde(rename = "complete_task")]
     CompleteTask,
@@ -12,7 +12,7 @@ pub enum ActionType {
     StartWorkflow,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct StartWorkflow {
     pub name: String,
     pub version: Option<i32>,
@@ -21,7 +21,7 @@ pub struct StartWorkflow {
     pub input: Option<serde_json::value::Value>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct UpdateTask {
     #[serde(rename = "workflowId")]
     pub workflow_id: String,
@@ -31,7 +31,7 @@ pub struct UpdateTask {
     pub output: Option<serde_json::value::Value>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Action {
     pub action: ActionType,
     pub start_workflow: Option<StartWorkflow>,
@@ -39,7 +39,7 @@ pub struct Action {
     pub fail_task: Option<UpdateTask>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct EventHandler {
     #[serde(rename = "actions")]
     pub actions: Vec<Action>,

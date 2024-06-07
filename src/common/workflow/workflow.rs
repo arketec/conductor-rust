@@ -7,7 +7,7 @@ use crate::common::enums::TimeoutPolicyEnum;
 
 use super::workflow_task::WorkflowTask;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default, Debug)]
 pub struct WorkflowDef {
     #[serde(rename = "timeoutPolicy")]
     pub timeout_policy: Option<TimeoutPolicyEnum>,

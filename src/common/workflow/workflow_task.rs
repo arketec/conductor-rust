@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::common::{ task::task_metadata::TaskDef, enums::WorkflowTaskTypeEnum };
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default, Debug)]
 pub struct WorkflowTask {
     #[serde(rename = "type")]
     pub workflow_task_type: Option<WorkflowTaskTypeEnum>,

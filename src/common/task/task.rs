@@ -7,7 +7,7 @@ use crate::common::{ workflow::workflow_task::WorkflowTask, enums::StatusEnum };
 
 use super::task_metadata::TaskDef;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default, Debug)]
 pub struct Task {
     #[serde(rename = "status")]
     pub status: Option<StatusEnum>,
