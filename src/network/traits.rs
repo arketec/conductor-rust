@@ -3,6 +3,7 @@ pub mod event_handler_provider;
 pub mod task_metadata_provider;
 pub mod task_metadata_mutator;
 pub mod task_poller;
+pub mod token_provider;
 pub mod workflow_executor;
 pub mod workflow_provider;
 pub mod workflow_metadata_mutator;

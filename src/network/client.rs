@@ -1,8 +1,12 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use reqwest::{ Client, Error, Response };
 use serde::Serialize;
+use tokio::sync::RwLock;
 
 use crate::common::{
+    auth::{ token_container::TokenContainer, token_credentials::TokenCredentials },
     event::event_handler::EventHandler,
     task::{ task::Task, task_metadata::TaskDef },
     workflow::{ workflow::WorkflowDef, workflow_metadata::Workflow },
@@ -14,15 +18,20 @@ use super::traits::{
     task_metadata_mutator::TaskMetadataMutator,
     task_metadata_provider::TaskMetadataProvider,
     task_poller::TaskPoller,
+    token_provider::TokenProvider,
+    workflow_executor::WorkflowExecutor,
     workflow_metadata_mutator::WorkflowMetadataMutator,
     workflow_metadata_provider::WorkflowMetadataProvider,
     workflow_provider::WorkflowProvider,
-    workflow_executor::WorkflowExecutor,
 };
 
 pub struct ConductorClient {
     client: Client,
     base_url: String,
+    api_token: Option<String>,
+    key_id: Option<String>,
+    key_secret: Option<String>,
+    token_cache: Arc<RwLock<Option<String>>>,
 }
 
 impl ConductorClient {
@@ -30,6 +39,41 @@ impl ConductorClient {
         Self {
             client: client.unwrap_or_default(),
             base_url: format!("http://{}:{}/api", conductor_host, conductor_port),
+            api_token: None,
+            key_id: None,
+            key_secret: None,
+            token_cache: Arc::new(RwLock::new(None)),
+        }
+    }
+    pub fn new_with_token(
+        conductor_host: &str,
+        conductor_port: &u32,
+        api_token: &str,
+        client: Option<Client>
+    ) -> Self {
+        Self {
+            client: client.unwrap_or_default(),
+            base_url: format!("http://{}:{}/api", conductor_host, conductor_port),
+            api_token: api_token.to_string().into(),
+            key_id: None,
+            key_secret: None,
+            token_cache: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    pub fn new_with_credentials(
+        conductor_host: &str,
+        conductor_port: &u32,
+        credentials: TokenCredentials,
+        client: Option<Client>
+    ) -> Self {
+        Self {
+            client: client.unwrap_or_default(),
+            base_url: format!("http://{}:{}/api", conductor_host, conductor_port),
+            api_token: None,
+            key_id: credentials.key_id.into(),
+            key_secret: credentials.key_secret.into(),
+            token_cache: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -37,7 +81,87 @@ impl ConductorClient {
         Self {
             client: client.unwrap_or_default(),
             base_url: format!("{}/api", conductor_url),
+            api_token: None,
+            key_id: None,
+            key_secret: None,
+            token_cache: Arc::new(RwLock::new(None)),
         }
+    }
+
+    pub fn new_with_url_and_token(
+        conductor_url: &str,
+        api_token: &str,
+        client: Option<Client>
+    ) -> Self {
+        Self {
+            client: client.unwrap_or_default(),
+            base_url: format!("{}/api", conductor_url),
+            api_token: api_token.to_string().into(),
+            key_id: None,
+            key_secret: None,
+            token_cache: Arc::new(RwLock::new(None)),
+        }
+    }
+    pub fn new_with_url_and_credentials(
+        conductor_url: &str,
+        credentials: TokenCredentials,
+        client: Option<Client>
+    ) -> Self {
+        Self {
+            client: client.unwrap_or_default(),
+            base_url: format!("{}/api", conductor_url),
+            api_token: None,
+            key_id: credentials.key_id.into(),
+            key_secret: credentials.key_secret.into(),
+            token_cache: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    async fn fetch_new_token(&self) -> Result<String, reqwest::Error> {
+        let response = self.client
+            .post(&format!("{}/token", self.base_url))
+            .json(
+                &(TokenCredentials {
+                    key_id: self.key_id.clone().unwrap(),
+                    key_secret: self.key_secret.clone().unwrap(),
+                })
+            )
+            .send().await?;
+
+        if !&response.status().is_success() {
+            println!("Status: {}", &response.status());
+            return Err(response.error_for_status().unwrap_err());
+        }
+
+        let token_json = response.json::<TokenContainer>().await?;
+        Ok(token_json.token)
+    }
+
+    async fn get_token(&self) -> Result<Option<String>, reqwest::Error> {
+        if self.api_token.is_none() && (self.key_id.is_none() || self.key_secret.is_none()) {
+            return Ok(None);
+        }
+        if self.api_token.is_some() {
+            return Ok(Some(self.api_token.clone().unwrap()));
+        }
+        // Check if the token is cached
+        {
+            let cached_token = self.token_cache.read().await;
+            if let Some(token) = &*cached_token {
+                return Ok(Some(token.clone()));
+            }
+        }
+
+        // Fetch a new token if not cached
+        let new_token = self.fetch_new_token().await?;
+
+        // Cache the new token
+        {
+            let mut cached_token = self.token_cache.write().await;
+            *cached_token = Some(new_token.clone());
+        }
+
+        Ok(Some(new_token))
     }
 }
 
@@ -45,7 +169,18 @@ impl ConductorClient {
 impl TaskMetadataProvider for ConductorClient {
     async fn get_task_metadata(&self, task_type: &str) -> Result<Option<TaskDef>, Error> {
         let url = format!("{}/metadata/taskdefs/{}", self.base_url, task_type);
-        let response: Response = self.client.get(&url).send().await?;
+        let response: Response = if
+            self.api_token.is_some() ||
+            self.token_cache.read().await.is_some()
+        {
+            self.client
+                .get(&url)
+                .bearer_auth(self.get_token().await.unwrap().unwrap())
+                .send().await?
+        } else {
+            self.client.get(&url).send().await?
+        };
+
         if !response.status().is_success() {
             println!("Status: {}", response.status());
             println!("Error: {}", response.text().await?);
@@ -56,7 +191,17 @@ impl TaskMetadataProvider for ConductorClient {
     }
     async fn get_all_task_metadata(&self) -> Result<Vec<TaskDef>, Error> {
         let url = format!("{}/metadata/taskdefs", self.base_url);
-        let response: Response = self.client.get(&url).send().await?;
+        let response: Response = if
+            self.get_token().await.is_ok() &&
+            self.get_token().await.unwrap().is_some()
+        {
+            self.client
+                .get(&url)
+                .bearer_auth(self.get_token().await.unwrap().unwrap())
+                .send().await?
+        } else {
+            self.client.get(&url).send().await?
+        };
         if !response.status().is_success() {
             println!("Status: {}", response.status());
             println!("Error: {}", response.text().await?);
@@ -71,7 +216,18 @@ impl TaskMetadataProvider for ConductorClient {
 impl TaskMetadataMutator for ConductorClient {
     async fn update_task_metadata(&self, task: TaskDef) -> Result<bool, Error> {
         let url = format!("{}/metadata/taskdefs", self.base_url);
-        let response: Response = self.client.put(&url).json(&task).send().await?;
+        let response = if
+            self.get_token().await.is_ok() &&
+            self.get_token().await.unwrap().is_some()
+        {
+            self.client
+                .put(&url)
+                .bearer_auth(self.get_token().await.unwrap().unwrap())
+                .json(&vec![task])
+                .send().await?
+        } else {
+            self.client.put(&url).json(&vec![task]).send().await?
+        };
         if !response.status().is_success() {
             println!("Status: {}", response.status());
             println!("Error: {}", response.text().await?);
@@ -81,7 +237,18 @@ impl TaskMetadataMutator for ConductorClient {
     }
     async fn save_task_metadata(&self, tasks: Vec<TaskDef>) -> Result<bool, Error> {
         let url = format!("{}/metadata/taskdefs", self.base_url);
-        let response: Response = self.client.post(&url).json(&tasks).send().await?;
+        let response = if
+            self.get_token().await.is_ok() &&
+            self.get_token().await.unwrap().is_some()
+        {
+            self.client
+                .post(&url)
+                .bearer_auth(self.get_token().await.unwrap().unwrap())
+                .json(&tasks)
+                .send().await?
+        } else {
+            self.client.post(&url).json(&tasks).send().await?
+        };
         if !response.status().is_success() {
             println!("Status: {}", response.status());
             println!("Error: {}", response.text().await?);
@@ -98,7 +265,17 @@ impl WorkflowMetadataProvider for ConductorClient {
         workflow_name: &str
     ) -> Result<Option<WorkflowDef>, Error> {
         let url = format!("{}/metadata/workflow/{}", self.base_url, workflow_name);
-        let response: Response = self.client.get(&url).send().await?;
+        let response: Response = if
+            self.get_token().await.is_ok() &&
+            self.get_token().await.unwrap().is_some()
+        {
+            self.client
+                .get(&url)
+                .bearer_auth(self.get_token().await.unwrap().unwrap())
+                .send().await?
+        } else {
+            self.client.get(&url).send().await?
+        };
         if !response.status().is_success() {
             println!("Status: {}", response.status());
             println!("Error: {}", response.text().await?);
@@ -109,7 +286,17 @@ impl WorkflowMetadataProvider for ConductorClient {
     }
     async fn get_all_workflow_metadata(&self) -> Result<Vec<WorkflowDef>, Error> {
         let url = format!("{}/metadata/workflow", self.base_url);
-        let response: Response = self.client.get(&url).send().await?;
+        let response: Response = if
+            self.get_token().await.is_ok() &&
+            self.get_token().await.unwrap().is_some()
+        {
+            self.client
+                .get(&url)
+                .bearer_auth(self.get_token().await.unwrap().unwrap())
+                .send().await?
+        } else {
+            self.client.get(&url).send().await?
+        };
         if !response.status().is_success() {
             println!("Status: {}", response.status());
             println!("Error: {}", response.text().await?);
@@ -124,7 +311,18 @@ impl WorkflowMetadataProvider for ConductorClient {
 impl WorkflowMetadataMutator for ConductorClient {
     async fn update_workflow_metadata(&self, workflow: WorkflowDef) -> Result<bool, Error> {
         let url = format!("{}/metadata/workflow", self.base_url);
-        let response: Response = self.client.put(&url).json(&vec![workflow]).send().await?;
+        let response: Response = if
+            self.get_token().await.is_ok() &&
+            self.get_token().await.unwrap().is_some()
+        {
+            self.client
+                .put(&url)
+                .bearer_auth(self.get_token().await.unwrap().unwrap())
+                .json(&vec![workflow])
+                .send().await?
+        } else {
+            self.client.put(&url).json(&vec![workflow]).send().await?
+        };
         if !response.status().is_success() {
             println!("Status: {}", response.status());
             println!("Error: {}", response.text().await?);
@@ -135,7 +333,18 @@ impl WorkflowMetadataMutator for ConductorClient {
     }
     async fn save_workflow_metadata(&self, workflows: Vec<WorkflowDef>) -> Result<bool, Error> {
         let url = format!("{}/metadata/workflow", self.base_url);
-        let response: Response = self.client.put(&url).json(&workflows).send().await?;
+        let response: Response = if
+            self.get_token().await.is_ok() &&
+            self.get_token().await.unwrap().is_some()
+        {
+            self.client
+                .put(&url)
+                .bearer_auth(self.get_token().await.unwrap().unwrap())
+                .json(&workflows)
+                .send().await?
+        } else {
+            self.client.put(&url).json(&workflows).send().await?
+        };
         if !response.status().is_success() {
             println!("Status: {}", response.status());
             println!("Error: {}", response.text().await?);
@@ -150,7 +359,17 @@ impl TaskPoller for ConductorClient {
     async fn poll(&self, task_type: &str) -> Result<Option<Task>, Error> {
         println!("Polling for taskType: '{}'", task_type);
         let url = format!("{}/tasks/poll/{}", self.base_url, task_type);
-        let response = self.client.get(&url).send().await?;
+        let response = if
+            self.get_token().await.is_ok() &&
+            self.get_token().await.unwrap().is_some()
+        {
+            self.client
+                .get(&url)
+                .bearer_auth(self.get_token().await.unwrap().unwrap())
+                .send().await?
+        } else {
+            self.client.get(&url).send().await?
+        };
 
         if !response.status().is_success() {
             println!("taskType: '{}' returned no results", task_type);
@@ -171,7 +390,18 @@ impl TaskPoller for ConductorClient {
     }
     async fn update(&self, task: Task) -> Result<bool, Error> {
         let url = format!("{}/tasks", self.base_url);
-        let response: Response = self.client.post(&url).json(&task).send().await?;
+        let response = if
+            self.get_token().await.is_ok() &&
+            self.get_token().await.unwrap().is_some()
+        {
+            self.client
+                .post(&url)
+                .bearer_auth(self.get_token().await.unwrap().unwrap())
+                .json(&task)
+                .send().await?
+        } else {
+            self.client.post(&url).json(&task).send().await?
+        };
         if !response.status().is_success() {
             println!("Status: {}", response.status());
             println!("Error: {}", response.text().await?);
@@ -185,7 +415,17 @@ impl TaskPoller for ConductorClient {
 impl WorkflowProvider for ConductorClient {
     async fn get_workflow_execution(&self, workflow_id: &str) -> Result<Option<Workflow>, Error> {
         let url = format!("{}/workflow/{}", self.base_url, workflow_id);
-        let response: Response = self.client.get(&url).send().await?;
+        let response: Response = if
+            self.get_token().await.is_ok() &&
+            self.get_token().await.unwrap().is_some()
+        {
+            self.client
+                .get(&url)
+                .bearer_auth(self.get_token().await.unwrap().unwrap())
+                .send().await?
+        } else {
+            self.client.get(&url).send().await?
+        };
         if !response.status().is_success() {
             println!("workflow_id: '{}' returned no results", workflow_id);
             return Ok(None);
@@ -205,7 +445,18 @@ impl WorkflowExecutor for ConductorClient {
         where T: Serialize + Send + Sync
     {
         let url = format!("{}/workflow/{}", self.base_url, workflow_name);
-        let response: Response = self.client.post(&url).json(&workflow_input).send().await?;
+        let response: Response = if
+            self.get_token().await.is_ok() &&
+            self.get_token().await.unwrap().is_some()
+        {
+            self.client
+                .post(&url)
+                .bearer_auth(self.get_token().await.unwrap().unwrap())
+                .json(&workflow_input)
+                .send().await?
+        } else {
+            self.client.post(&url).json(&workflow_input).send().await?
+        };
         if !response.status().is_success() {
             println!("Status: {}", response.status());
             println!("Error: {}", response.text().await?);
@@ -220,7 +471,17 @@ impl WorkflowExecutor for ConductorClient {
 impl EventHandlerProvider for ConductorClient {
     async fn get_event_handler(&self, event_type: &str) -> Result<Option<EventHandler>, Error> {
         let url = format!("{}/event/{}", self.base_url, event_type);
-        let response: Response = self.client.get(&url).send().await?;
+        let response: Response = if
+            self.get_token().await.is_ok() &&
+            self.get_token().await.unwrap().is_some()
+        {
+            self.client
+                .get(&url)
+                .bearer_auth(self.get_token().await.unwrap().unwrap())
+                .send().await?
+        } else {
+            self.client.get(&url).send().await?
+        };
         if !response.status().is_success() {
             println!("Status: {}", response.status());
             println!("Error: {}", response.text().await?);
@@ -232,7 +493,17 @@ impl EventHandlerProvider for ConductorClient {
 
     async fn get_all_event_handlers(&self) -> Result<Vec<EventHandler>, Error> {
         let url = format!("{}/event", self.base_url);
-        let response: Response = self.client.get(&url).send().await?;
+        let response: Response = if
+            self.get_token().await.is_ok() &&
+            self.get_token().await.unwrap().is_some()
+        {
+            self.client
+                .get(&url)
+                .bearer_auth(self.get_token().await.unwrap().unwrap())
+                .send().await?
+        } else {
+            self.client.get(&url).send().await?
+        };
         if !response.status().is_success() {
             println!("Status: {}", response.status());
             println!("Error: {}", response.text().await?);
@@ -247,7 +518,18 @@ impl EventHandlerProvider for ConductorClient {
 impl EventHandlerMutator for ConductorClient {
     async fn update_event_handler(&self, event_handler: EventHandler) -> Result<bool, Error> {
         let url = format!("{}/event", self.base_url);
-        let response: Response = self.client.put(&url).json(&event_handler).send().await?;
+        let response: Response = if
+            self.get_token().await.is_ok() &&
+            self.get_token().await.unwrap().is_some()
+        {
+            self.client
+                .put(&url)
+                .bearer_auth(self.get_token().await.unwrap().unwrap())
+                .json(&event_handler)
+                .send().await?
+        } else {
+            self.client.put(&url).json(&event_handler).send().await?
+        };
         if !response.status().is_success() {
             println!("Status: {}", response.status());
             println!("Error: {}", response.text().await?);
@@ -258,13 +540,48 @@ impl EventHandlerMutator for ConductorClient {
 
     async fn save_event_handler(&self, event_handler: EventHandler) -> Result<bool, Error> {
         let url = format!("{}/event", self.base_url);
-        let response: Response = self.client.post(&url).json(&event_handler).send().await?;
+        let response: Response = if
+            self.get_token().await.is_ok() &&
+            self.get_token().await.unwrap().is_some()
+        {
+            self.client
+                .post(&url)
+                .bearer_auth(self.get_token().await.unwrap().unwrap())
+                .json(&event_handler)
+                .send().await?
+        } else {
+            self.client.post(&url).json(&event_handler).send().await?
+        };
         if !response.status().is_success() {
             println!("Status: {}", response.status());
             println!("Error: {}", response.text().await?);
             return Ok(false);
         }
         Ok(true)
+    }
+}
+
+#[async_trait]
+impl TokenProvider for ConductorClient {
+    async fn get_token(&self) -> Result<Option<String>, reqwest::Error> {
+        // Check if the token is cached
+        {
+            let cached_token = self.token_cache.read().await;
+            if let Some(token) = &*cached_token {
+                return Ok(Some(token.clone()));
+            }
+        }
+
+        // Fetch a new token if not cached
+        let new_token = self.fetch_new_token().await?;
+
+        // Cache the new token
+        {
+            let mut cached_token = self.token_cache.write().await;
+            *cached_token = Some(new_token.clone());
+        }
+
+        Ok(Some(new_token))
     }
 }
 
@@ -1272,6 +1589,35 @@ mod unit_tests {
         let result = client.get_event_handler("simple_event_1").await.unwrap();
 
         assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_token() {
+        let mut server = mockito::Server::new_async().await;
+        let token = r#"{
+            "token": "1234"
+        }"#;
+
+        server.mock("POST", "/api/token").with_status(200).with_body(token).create();
+
+        let url = server.host_with_port();
+
+        let host = url.split(':').collect::<Vec<&str>>()[0];
+        let port = url.split(':').collect::<Vec<&str>>()[1].parse::<u32>().unwrap();
+
+        let client = ConductorClient::new_with_credentials(
+            &Box::new(host),
+            &Box::new(port),
+            TokenCredentials {
+                key_id: "key_id".to_string(),
+                key_secret: "key_secret".to_string(),
+            },
+            None
+        );
+
+        let result = client.get_token().await.unwrap();
+
+        assert_eq!(result.unwrap(), "1234");
     }
 }
 
